@@ -1,5 +1,6 @@
 exception Not_Implemented
 exception Type_Error of string
+exception Type_Mismatch of string
 
 (* Types *)
 (* Lists *)
@@ -37,6 +38,9 @@ type def = { typ: term; val_: term }
 type book = (string, def) Hashtbl.t
 type load = string -> (def option)
 type fill = (string, term) Hashtbl.t
+
+(* these functions should go into a parsing file or something *)
+let show_term (term: term) (dep: int): string = raise Not_Implemented
 
 (* Checker *)
 (* Reduces to weak normal form *)
@@ -140,12 +144,98 @@ let rec normal ?(dep=0) (load: load) (term: term): term =
       normal ~dep load (bod val_)
   | _ -> term
 
-let rec infer ?(dep=0) (fill: fill) (load: load) (term: term): term =
-  match term with
-  | Var _ -> raise (Type_Error "Can't infer type of variable.")
-  | Ref name -> let loaded = load name in
-      (match loaded with
-       | Some def -> def.typ
-       | None -> raise (Type_Error "Can't infer type of reference."))
-  | _ -> raise Not_Implemented
+  exception InferenceError of string
+
+  (* Checker *)
+  let rec infer ?(dep: int = 0) (fill: fill) (load: load) (term: term) : term =
+    match term with
+    | Var _ -> raise (InferenceError "Can't infer var.")
+    | Ref nam ->
+        (match load nam with
+         | Some loaded -> loaded.typ
+         | None -> Ref nam)
+    | Hol (nam, ctx, cap) -> Hol (nam ^ "_T", ctx, cap)
+    | Set -> Set
+    | All (nam, inp, bod) ->
+        ignore (check fill load inp Set true dep);
+        ignore (check fill load (bod (Ann (false, Var (nam, dep), inp))) Set true (dep + 1));
+        Set
+    | Lam (nam, bod) ->
+        All (nam,
+          Hol (nam ^ "_I", Nil, Nil),
+          (fun x -> Hol (nam ^ "_O", Cons ((nam, x), Nil), Nil)))
+    | App (fun_term, arg_term) ->
+        let fun_ty = reduce load (infer fill load fun_term ~dep) dep in
+        let fun_ty = match fun_ty with
+          | Hol (nam, ctx, cap) ->
+              All (nam,
+                Hol (nam ^ "_I", ctx, cap),
+                (fun x -> Hol (nam ^ "_O", Cons ((nam, x), ctx), cap)))
+          | _ -> fun_ty
+        in
+        (match fun_ty with
+         | All (_, inp, bod) ->
+             ignore (check fill load arg_term inp true dep);
+             bod arg_term
+         | _ ->
+             print_endline ("- fun: " ^ show_term fun_term dep);
+             print_endline ("- typ: " ^ show_term fun_ty dep);
+             raise (InferenceError "NonFunApp"))
+    | Fix (_, typ, bod) ->
+        infer fill load (bod (Ann (false, Var ("", dep), typ))) ~dep:(dep + 1)
+    | Ins val_ ->
+        let val_ty = reduce load (infer fill load val_ ~dep) dep in
+        (match val_ty with
+         | Slf (_, bod) -> bod term
+         | _ -> raise (InferenceError "NonSlfIns"))
+    | Slf (nam, bod) ->
+        ignore (check fill load (bod (Ann (false, Var (nam, dep), term))) Set true dep);
+        Set
+    | Ann (_, val_, typ) ->
+        check fill load val_ typ true dep
+    | Let _ -> raise (InferenceError "NonAnnLet")
+    | Def _ -> raise (InferenceError "NonAnnDef")
+  
+  (* Assume check exists and has the expected signature *)
+and check (fill: fill) (load: load) (val_: term) (tty: term) (chk: bool) (dep: int) : term =
+  let typ = reduce load tty dep in
+  match chk with 
+  | false -> typ
+  | true -> 
+    (match val_ with
+    | Lam (nam, bod) ->
+        (match typ with
+          | All (typ_nam, inp, typ_bod) ->
+              ignore (check fill load (bod (Ann (false, Var(nam, dep), inp))) (typ_bod (Ann(false, Var(typ_nam, dep), inp))) chk (dep + 1));
+              typ
+          | _ ->
+              raise (Type_Error "NonFunLam"))
+    | Ins val_inner ->
+        (match typ with
+          | Slf (nam, bod_typ) ->
+              ignore (check fill load val_inner (bod_typ val_) chk dep);
+              typ
+          | _ ->
+              raise (Type_Error "NonSlfIns"))
+    | Hol (nam, ctx, cap) ->
+        (* Implement fill_typed_hole here *)
+        typ
+    | Let (nam, val_inner, bod) ->
+        let val_typ = infer ~dep fill load val_inner in
+        ignore (check fill load (bod (Ann (false, val_inner, val_typ))) typ chk (dep + 1));
+        typ
+    | Def (nam, val_inner, bod) ->
+        ignore (check fill load (bod val_inner) typ chk (dep + 1));
+        typ
+    | _ ->
+        let inf = infer ~dep fill load val_ in
+        let inf = reduce load inf dep in
+        (match (equal (Some fill) load typ inf dep) with
+        | true -> typ
+        | false ->
+            let exp = show_term val_ dep in
+            let det = show_term tty dep in
+            let msg = "TypeMismatch\n- expected: " ^ exp ^ "\n- detected: " ^ det in
+            raise (Type_Mismatch msg)
+        ))
 
