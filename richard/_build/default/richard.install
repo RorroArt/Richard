@@ -1,0 +1,8 @@
+lib: [
+  "_build/install/default/lib/richard/META"
+  "_build/install/default/lib/richard/dune-package"
+  "_build/install/default/lib/richard/opam"
+]
+bin: [
+  "_build/install/default/bin/richard"
+]
