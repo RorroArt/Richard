@@ -1,5 +1,11 @@
 (library
  (name richard))
+ ; (libraries menhirLib))
+
+; (menhir
+;  (modules parser))
+
+; (ocamllex lexer)
 
 (env
   (dev

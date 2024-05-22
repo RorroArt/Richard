@@ -2,3 +2,7 @@
  (public_name richard)
  (name main)
  (libraries str richard))
+
+(env
+  (dev
+    (flags (:standard -warn-error -A))))

@@ -15,5 +15,5 @@ type term =
   | Let of string * term * (term -> term)
   | Def of string * term * (term -> term)
   | Ref of string
-  | Hol of string * term list * (term list)
+  | Hol of string * context * (term list_t)
 and context = (string * term) list_t

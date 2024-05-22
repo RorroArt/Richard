@@ -2,14 +2,15 @@ exception Not_Implemented
 exception Type_Error of string
 exception Type_Mismatch of string
 exception ParseError of string
+open Ast
 
 module Lang = struct
 
   (* Types *)
   (* Lists *)
-  type 'a list_t =
+  (* type 'a list_t =
     | Cons of 'a * 'a list_t
-    | Nil
+    | Nil *)
 
   let rec fold (list: 'a list_t) (f: 'a -> 'acc -> 'acc) (acc: 'acc) =
     match list with
@@ -20,7 +21,7 @@ module Lang = struct
     fold list (fun head tail -> Cons (head, tail)) (Cons (elem, Nil))
 
   (* Terms *)
-  type term =
+  (* type term =
     | Var of string * int (* why does this have a depth? *)
     | Set
     | All of string * term * (term -> term)
@@ -35,7 +36,7 @@ module Lang = struct
     | Ref of string
     | Hol of string * context * (term list_t)
 
-  and context = (string * term) list_t
+  and context = (string * term) list_t *)
 
   type def = { typ: term; val_: term }
   type book = (string, def) Hashtbl.t
@@ -336,7 +337,7 @@ module Lang = struct
           let typ = cleanup typ 0 in
           Printf.printf "\x1b[32m✔ %s\x1b[0m\n" name;
           (* Uncomment to print definitions *)
-          (* Printf.printf "%s\n: %s\n= %s\n" name (show_term typ 0) (show_term val_ 0); *)
+          Printf.printf "%s\n: %s\n= %s\n" name (show_term typ 0) (show_term val_ 0);
           name ^ "\n: " ^ (show_term typ 0) ^ "\n= " ^ (show_term val_ 0)
       | None -> raise (Failure ("Couldn't load '" ^ name ^ "'."))
     with
@@ -429,91 +430,101 @@ let parse_name code =
   
 let rec parse_text code text =
   let code = skip code in
-  if text = "" then
+  if String.length text = 0 then
     code, ()
   else if code.[0] = text.[0] then
     parse_text(String.sub code 1 ((String.length code) - 1)) (String.sub text 1 ((String.length text) - 1))
   else
     raise (ParseError ("Expected '" ^ text ^ "'"))
 
-  let rec parse_term code =
-    let code = skip code in
-    if String.length code = 0 then raise (ParseError "Unexpected end of input");
-    match String.make 1 code.[0] with
-    | "\u{2200}" ->
-        let code, nam = parse_name (String.sub code 2 (String.length code - 2)) in
-        let code, _ = parse_text code ":" in
-        let code, typ = parse_term code in
-        let code, _ = parse_text code ")" in
-        let code, bod = parse_term code in
-        (code, fun ctx -> All (nam, typ ctx, fun x -> bod (Cons ((nam, x), ctx))))
-    | "\u{03BB}" ->
-        let code, nam = parse_name (String.sub code 1 (String.length code - 1)) in
-        let code, bod = parse_term code in
-        (code, fun ctx -> Lam (nam, fun x -> bod (Cons ((nam, x), ctx))))
-    | "(" ->
-        let code, fun_ = parse_term (String.sub code 1 (String.length code - 1)) in
-        let rec parse_args code args =
-          let code = skip code in
-          if String.length code = 0 || code.[0] = ')' then (code, List.rev args)
-          else
-            let code, arg = parse_term code in
-            parse_args code (arg :: args)
-        in
-        let code, args = parse_args code [] in
-        let code, _ = parse_text code ")" in
-        (code, fun ctx -> List.fold_left (fun f x -> App (f, x ctx)) (fun_ ctx) args)
-    | "\u{03BC}" ->
-        let code, nam = parse_name (String.sub code 2 (String.length code - 2)) in
-        let code, _ = parse_text code ":" in
-        let code, typ = parse_term code in
-        let code, _ = parse_text code ")" in
-        let code, bod = parse_term code in
-        (code, fun ctx -> Fix (nam, typ ctx, fun x -> bod (Cons ((nam, x), ctx))))
-    | "*" ->
-        (String.sub code 1 (String.length code - 1), fun _ -> Set)
-    | "$" ->
-        let code, nam = parse_name (String.sub code 1 (String.length code - 1)) in
-        let code, bod = parse_term code in
-        (code, fun ctx -> Slf (nam, fun x -> bod (Cons ((nam, x), ctx))))
-    | "~" ->
-        let code, val_ = parse_term (String.sub code 1 (String.length code - 1)) in
-        (code, fun ctx -> Ins (val_ ctx))
-    | "{" ->
-        let code, val_ = parse_term (String.sub code 1 (String.length code - 1)) in
-        let code, _ = parse_text code ":" in
-        let code, typ = parse_term code in
-        let code, _ = parse_text code "}" in
-        (code, fun ctx -> Ann (true, val_ ctx, typ ctx))
-    | "l" when String.sub code 0 4 = "let " ->
-        let code, nam = parse_name (String.sub code 4 (String.length code - 4)) in
-        let code, _ = parse_text code "=" in
-        let code, val_ = parse_term code in
-        let code, bod = parse_term code in
-        (code, fun ctx -> Let (nam, val_ ctx, fun x -> bod (Cons ((nam, x), ctx))))
-    | "d" when String.sub code 0 4 = "def " ->
-        let code, nam = parse_name (String.sub code 4 (String.length code - 4)) in
-        let code, _ = parse_text code "=" in
-        let code, val_ = parse_term code in
-        let code, bod = parse_term code in
-        (code, fun ctx -> Def (nam, val_ ctx, fun x -> bod (Cons ((nam, x), ctx))))
-    | "?" ->
-        let code, nam = parse_name (String.sub code 1 (String.length code - 1)) in
-        (code, fun ctx -> Hol ("?" ^ nam, ctx, Nil))
-    | "%" ->
-        let code, idx = parse_name (String.sub code 1 (String.length code - 1)) in
-        (code, fun ctx -> gets ctx (int_of_string idx))
-    | _ ->
-        print_endline code;
-        let code, nam = parse_name code in
-        if nam = "" then raise (ParseError "Expected a variable name")
-        else (code, fun ctx -> find ctx nam)
+let rec parse_term code =
+  let code = skip code in
+  if String.length code = 0 then raise (ParseError "Unexpected end of input");
+
+  let first_two_chars = if String.length code >= 2 then String.sub code 0 2 else "" in
+  let first_three_chars = if String.length code >= 3 then String.sub code 0 3 else "" in
+  match first_three_chars, first_two_chars with
+  | "\u{2200}", _ -> (* ∀ - Forall *)
+      let code = String.sub code 3 (String.length code - 3) in
+      let code, _ = parse_text code "(" in
+      let code, nam = parse_name code in
+      let code, _ = parse_text code ":" in
+      let code, typ = parse_term code in
+      let code, _ = parse_text code ")" in
+      let code, bod = parse_term code in
+      (code, fun ctx -> All (nam, typ ctx, fun x -> bod (Cons ((nam, x), ctx))))
+  | _, "\u{03BB}" -> (* λ - Lambda *)
+      let code = String.sub code 2 (String.length code - 2) in
+      let code, nam = parse_name code in
+      let code, bod = parse_term code in
+      (code, fun ctx -> Lam (nam, fun x -> bod (Cons ((nam, x), ctx))))
+  | _, "\u{03BC}" -> (* μ - Mu *)
+      let code = String.sub code 2 (String.length code - 2) in
+      let code, nam = parse_name code in
+      let code, _ = parse_text code ":" in
+      let code, typ = parse_term code in
+      let code, _ = parse_text code ")" in
+      let code, bod = parse_term code in
+      (code, fun ctx -> Fix (nam, typ ctx, fun x -> bod (Cons ((nam, x), ctx))))
+  | _, t -> parse_non_unicode_terms code
+
+and parse_non_unicode_terms code =
+    (* print_endline (String.sub code 0 1); *)
+    match String.get code 0 with
+  | '(' ->
+      let code, fun_ = parse_term (String.sub code 1 (String.length code - 1)) in
+      let rec parse_args code args =
+        let code = skip code in
+        if String.length code = 0 || code.[0] = ')' then (code, List.rev args)
+        else
+          let code, arg = parse_term code in
+          parse_args code (arg :: args)
+      in
+      let code, args = parse_args code [] in
+      let code, _ = parse_text code ")" in
+      (code, fun ctx -> List.fold_left (fun f x -> App (f, x ctx)) (fun_ ctx) args)
+  | '*' ->
+      (String.sub code 1 (String.length code - 1), fun _ -> Set)
+  | '$' ->
+      let code, nam = parse_name (String.sub code 1 (String.length code - 1)) in
+      let code, bod = parse_term code in
+      (code, fun ctx -> Slf (nam, fun x -> bod (Cons ((nam, x), ctx))))
+  | '~' ->
+      let code, val_ = parse_term (String.sub code 1 (String.length code - 1)) in
+      (code, fun ctx -> Ins (val_ ctx))
+  | '{' ->
+      let code, val_ = parse_term (String.sub code 1 (String.length code - 1)) in
+      let code, _ = parse_text code ":" in
+      let code, typ = parse_term code in
+      let code, _ = parse_text code "}" in
+      (code, fun ctx -> Ann (true, val_ ctx, typ ctx))
+  | 'l' when String.sub code 0 4 = "let " ->
+      let code, nam = parse_name (String.sub code 4 (String.length code - 4)) in
+      let code, _ = parse_text code "=" in
+      let code, val_ = parse_term code in
+      let code, bod = parse_term code in
+      (code, fun ctx -> Let (nam, val_ ctx, fun x -> bod (Cons ((nam, x), ctx))))
+  | 'd' when String.sub code 0 4 = "def " ->
+      let code, nam = parse_name (String.sub code 4 (String.length code - 4)) in
+      let code, _ = parse_text code "=" in
+      let code, val_ = parse_term code in
+      let code, bod = parse_term code in
+      (code, fun ctx -> Def (nam, val_ ctx, fun x -> bod (Cons ((nam, x), ctx))))
+  | '?' ->
+      let code, nam = parse_name (String.sub code 1 (String.length code - 1)) in
+      (code, fun ctx -> Hol ("?" ^ nam, ctx, Nil))
+  | '%' ->
+      let code, idx = parse_name (String.sub code 1 (String.length code - 1)) in
+      (code, fun ctx -> gets ctx (int_of_string idx))
+  | _ ->
+      let code, nam = parse_name code in
+      if nam = "" then raise (ParseError "Expected a variable name")
+      else (code, fun ctx -> find ctx nam)
 
   let do_parse_term code = snd (parse_term code) Nil
 
   let parse_def code =
-    let code = skip code in
-    let code, nam = parse_name code in
+    let code, nam = parse_name (skip code) in
     let code, _ = parse_text code ":" in
     let code, typ = parse_term code in
     let code, _ = parse_text code "=" in
@@ -525,7 +536,7 @@ let rec parse_text code text =
     let rec aux code =
       if String.length code > 0 then
         let code, nam, def = parse_def code in
-        Hashtbl.add book nam { typ = def.typ; val_ = def.val_ };
+        Hashtbl.add book nam def;
         aux (skip code)
     in
     aux code;
@@ -541,8 +552,9 @@ let rec parse_text code text =
         match code with
         | "" -> None
         | _ ->
+          print_endline ("Loading " ^ name);
           let _, nam, def = parse_def code in
-          Hashtbl.add book nam { typ = def.typ; val_ = def.val_ };
+          Hashtbl.add book nam def;
           Some def
       else
         Some (Hashtbl.find book name)
