@@ -552,7 +552,6 @@ and parse_non_unicode_terms code =
         match code with
         | "" -> None
         | _ ->
-          print_endline ("Loading " ^ name);
           let _, nam, def = parse_def code in
           Hashtbl.add book nam def;
           Some def

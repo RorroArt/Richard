@@ -1,7 +1,7 @@
 (executable
  (public_name richard)
  (name main)
- (libraries str richard))
+ (libraries str richard notty notty.unix))
 
 (env
   (dev

@@ -1,0 +1,5 @@
+double
+: ∀(n: Nat) 
+  Nat
+= λn 
+  (~n λn Nat λp (succ (succ (double p))) zero)
