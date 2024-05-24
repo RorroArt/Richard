@@ -85,67 +85,89 @@ module Lang = struct
         | None -> term)
     | _ -> term
 
-  let rec equal (fill: fill option) (load: load) (a: term) (b: term) (dep: int) : bool =
-    let rec compare xs ys =
-      match xs, ys with
-      | Cons (head_x, tail_x), Cons (head_y, tail_y) ->
-          let head_eq = equal fill load head_x head_y dep in
-          let tail_eq = compare tail_x tail_y in
-          head_eq && tail_eq
-      | Nil, Nil -> true
-      | _ -> false
-    in
-    let rec get_args = function
-      | App (fun_, arg) -> Cons (arg, get_args fun_)
-      | _ -> Nil
-    in
-    let eq = match a, b with
-      | Var (_, val_a), Var (_, val_b) -> val_a = val_b
-      | Set, Set -> true
-      | All (nam_a, inp_a, bod_a), All (nam_b, inp_b, bod_b) ->
-          equal fill load inp_a inp_b dep &&
-          equal fill load (bod_a (Var (nam_a, dep))) (bod_b (Var (nam_b, dep))) (dep + 1)
-      | Lam (nam_a, bod_a), Lam (nam_b, bod_b) ->
-          equal fill load (bod_a (Var (nam_a, dep))) (bod_b (Var (nam_b, dep))) (dep + 1)
-      | App (fun_a, arg_a), App (fun_b, arg_b) ->
-          equal fill load fun_a fun_b dep && equal fill load arg_a arg_b dep
-      | Fix (nam_a, typ_a, bod_a), Fix (nam_b, typ_b, bod_b) ->
-          equal fill load typ_a typ_b dep &&
-          equal fill load (bod_a (Var (nam_a, dep))) (bod_b (Var (nam_b, dep))) (dep + 1)
-      | Slf (nam_a, bod_a), Slf (nam_b, bod_b) ->
-          equal fill load (bod_a (Var (nam_a, dep))) (bod_b (Var (nam_b, dep))) (dep + 1)
-      | Ins val_a, Ins val_b ->
-          equal fill load val_a val_b dep
-      | Ref nam_a, Ref nam_b ->
-          nam_a = nam_b
-      | Hol (nam_a, _, _), Hol (nam_b, _, _) ->
-          nam_a = nam_b
-      | Hol (_, _, a_cap), _ ->
-          (match fill with
-          | Some fill_tbl ->
-              (* Implement fill_valued_hole here *)
-              true
-          | None ->
-              let b_cap = get_args b in
-              compare a_cap b_cap)
-      | _, Hol _ ->
-          equal fill load b a dep
-      | _ -> false
-    in
-    (* Could make this better with matches*)
-    if not eq then
-      let a2 = reduce load a dep in
-      if a2 <> a then
-        equal fill load a2 b dep
-      else
-        let b2 = reduce load b dep in
-        if b2 <> b then
-          equal fill load a b2 dep
+    let rec equal (fill: fill option) (load: load) (a: term) (b: term) (dep: int) : bool =
+      print_endline ("equal: " ^ (show_term a 0) ^ " == " ^ (show_term b 0) ^ " at depth " ^ string_of_int dep);
+      
+      let rec compare xs ys =
+        match xs, ys with
+        | Cons (head_x, tail_x), Cons (head_y, tail_y) ->
+            let head_eq = equal fill load head_x head_y dep in
+            let tail_eq = compare tail_x tail_y in
+            head_eq && tail_eq
+        | Nil, Nil -> true
+        | _ -> false
+      in
+    
+      let rec get_args = function
+        | App (fun_, arg) -> Cons (arg, get_args fun_)
+        | _ -> Nil
+      in
+    
+      let eq = match a, b with
+        | Var (_, val_a), Var (_, val_b) -> 
+            print_endline ("Comparing Vars: " ^ string_of_int val_a ^ " == " ^ string_of_int val_b);
+            val_a = val_b
+        | Set, Set -> 
+            print_endline "Comparing Sets";
+            true
+        | All (nam_a, inp_a, bod_a), All (nam_b, inp_b, bod_b) ->
+            print_endline "Comparing All";
+            equal fill load inp_a inp_b dep &&
+            equal fill load (bod_a (Var (nam_a, dep))) (bod_b (Var (nam_b, dep))) (dep + 1)
+        | Lam (nam_a, bod_a), Lam (nam_b, bod_b) ->
+            print_endline "Comparing Lam";
+            equal fill load (bod_a (Var (nam_a, dep))) (bod_b (Var (nam_b, dep))) (dep + 1)
+        | App (fun_a, arg_a), App (fun_b, arg_b) ->
+            print_endline "Comparing App";
+            equal fill load fun_a fun_b dep && equal fill load arg_a arg_b dep
+        | Fix (nam_a, typ_a, bod_a), Fix (nam_b, typ_b, bod_b) ->
+            print_endline "Comparing Fix";
+            equal fill load typ_a typ_b dep &&
+            equal fill load (bod_a (Var (nam_a, dep))) (bod_b (Var (nam_b, dep))) (dep + 1)
+        | Slf (nam_a, bod_a), Slf (nam_b, bod_b) ->
+            print_endline "Comparing Slf";
+            equal fill load (bod_a (Var (nam_a, dep))) (bod_b (Var (nam_b, dep))) (dep + 1)
+        | Ins val_a, Ins val_b ->
+            print_endline "Comparing Ins";
+            equal fill load val_a val_b dep
+        | Ref nam_a, Ref nam_b ->
+            print_endline ("Comparing Refs: " ^ nam_a ^ " == " ^ nam_b);
+            nam_a = nam_b
+        | Hol (nam_a, _, _), Hol (nam_b, _, _) ->
+            print_endline ("Comparing Holes: " ^ nam_a ^ " == " ^ nam_b);
+            nam_a = nam_b
+        | Hol (_, _, a_cap), _ ->
+            print_endline "Comparing Hole with non-Hole";
+            (match fill with
+            | Some fill_tbl ->
+                (* Implement fill_valued_hole here *)
+                true
+            | None ->
+                let b_cap = get_args b in
+                compare a_cap b_cap)
+        | _, Hol _ ->
+            print_endline "Comparing non-Hole with Hole";
+            equal fill load b a dep
+        | _ -> 
+            print_endline ("Comparing other: " ^ (show_term a 0) ^ " == " ^ (show_term b 0));
+            print_endline "Comparison failed";
+            false
+      in
+    
+      if not eq then
+        let a2 = reduce load a dep in
+        print_endline ("Reduced a: " ^ (show_term a2 0));
+        if a2 <> a then
+          equal fill load a2 b dep
         else
-          eq
-    else
-      eq
-
+          let b2 = reduce load b dep in
+          if b2 <> b then
+            equal fill load a b2 dep
+          else
+            eq
+      else
+        eq
+    
   (* not super sure what the depth is used for *)
   let rec normal ?(dep=0) (load: load) (term: term): term =
     let term = reduce load term dep in
@@ -169,24 +191,38 @@ module Lang = struct
     exception InferenceError of string
 
     (* Checker *)
-    let rec infer ?(dep: int = 0) (fill: fill) (load: load) (term: term) : term =
+    let rec infer ?(dep=0) (fill: fill) (load: load) (term: term) : term =
+      print_endline ("infer: " ^ (show_term term 0) ^ " at depth " ^ string_of_int dep);
       match term with
-      | Var _ -> raise (InferenceError "Can't infer var.")
+      | Var (nam, _) -> 
+          print_endline ("Error: Can't infer var: " ^ nam);
+          raise (InferenceError ("Can't infer var: " ^ nam))
       | Ref nam ->
           (match load nam with
-          | Some loaded -> loaded.typ
-          | None -> Ref nam)
-      | Hol (nam, ctx, cap) -> Hol (nam ^ "_T", ctx, cap)
-      | Set -> Set
+          | Some loaded ->
+              print_endline ("Loaded type for ref " ^ nam ^ ": " ^ (show_term loaded.typ 0));
+              loaded.typ
+          | None -> 
+              print_endline ("Warning: Ref " ^ nam ^ " not found");
+              Ref nam)
+      | Hol (nam, ctx, cap) -> 
+          print_endline ("Infer hole: " ^ nam);
+          Hol (nam ^ "_T", ctx, cap)
+      | Set -> 
+          print_endline "Infer Set";
+          Set
       | All (nam, inp, bod) ->
+          print_endline ("Infer All: " ^ nam);
           ignore (check fill load inp Set true dep);
           ignore (check fill load (bod (Ann (false, Var (nam, dep), inp))) Set true (dep + 1));
           Set
       | Lam (nam, bod) ->
+          print_endline ("Infer Lam: " ^ nam);
           All (nam,
             Hol (nam ^ "_I", Nil, Nil),
             (fun x -> Hol (nam ^ "_O", Cons ((nam, x), Nil), Nil)))
       | App (fun_term, arg_term) ->
+          print_endline "Infer App";
           let fun_ty = reduce load (infer fill load fun_term ~dep) dep in
           let fun_ty = match fun_ty with
             | Hol (nam, ctx, cap) ->
@@ -197,69 +233,93 @@ module Lang = struct
           in
           (match fun_ty with
           | All (_, inp, bod) ->
+              print_endline ("Checking App argument: " ^ (show_term arg_term 0));
               ignore (check fill load arg_term inp true dep);
               bod arg_term
           | _ ->
-              print_endline ("- fun: " ^ show_term fun_term dep);
-              print_endline ("- typ: " ^ show_term fun_ty dep);
+              print_endline ("Error: NonFunApp");
+              print_endline ("- fun: " ^ (show_term fun_term dep));
+              print_endline ("- typ: " ^ (show_term fun_ty dep));
               raise (InferenceError "NonFunApp"))
-      | Fix (_, typ, bod) ->
-          infer fill load (bod (Ann (false, Var ("", dep), typ))) ~dep:(dep + 1)
+      | Fix (nam, typ, bod) ->
+          print_endline ("Infer Fix: " ^ nam);
+          infer fill load (bod (Ann (false, Var (nam, dep), typ))) ~dep:(dep + 1)
       | Ins val_ ->
+          print_endline "Infer Ins";
           let val_ty = reduce load (infer fill load val_ ~dep) dep in
           (match val_ty with
-          | Slf (_, bod) -> bod term
+          | Slf (nam, bod) -> bod term
           | _ -> raise (InferenceError "NonSlfIns"))
       | Slf (nam, bod) ->
+          print_endline ("Infer Slf: " ^ nam);
           ignore (check fill load (bod (Ann (false, Var (nam, dep), term))) Set true dep);
           Set
-      | Ann (_, val_, typ) ->
-          check fill load val_ typ true dep
-      | Let _ -> raise (InferenceError "NonAnnLet")
-      | Def _ -> raise (InferenceError "NonAnnDef")
+      | Ann (chk, val_, typ) ->
+          print_endline ("Infer Ann");
+          check fill load val_ typ chk dep
+      | Let _ -> 
+          print_endline ("Error: NonAnnLet");
+          raise (InferenceError "NonAnnLet")
+      | Def _ -> 
+          print_endline ("Error: NonAnnDef");
+          raise (InferenceError "NonAnnDef")
     
     (* Assume check exists and has the expected signature *)
   and check (fill: fill) (load: load) (val_: term) (tty: term) (chk: bool) (dep: int) : term =
+    print_endline ("check: " ^ (show_term val_ 0) ^ " against type " ^ (show_term tty 0) ^ " at depth " ^ string_of_int dep);
     let typ = reduce load tty dep in
     match chk with 
-    | false -> typ
+    | false -> 
+      print_endline ("Check: NoCheck");
+      typ
     | true -> 
       (match val_ with
       | Lam (nam, bod) ->
+          print_endline ("Check Lam: " ^ nam);
           (match typ with
             | All (typ_nam, inp, typ_bod) ->
                 ignore (check fill load (bod (Ann (false, Var(nam, dep), inp))) (typ_bod (Ann(false, Var(typ_nam, dep), inp))) chk (dep + 1));
                 typ
             | _ ->
+                print_endline ("Error: NonFunLam");
                 raise (Type_Error "NonFunLam"))
       | Ins val_inner ->
+          print_endline "Check Ins";
           (match typ with
             | Slf (nam, bod_typ) ->
                 ignore (check fill load val_inner (bod_typ val_) chk dep);
                 typ
             | _ ->
+                print_endline ("Error: NonSlfIns");
                 raise (Type_Error "NonSlfIns"))
       | Hol (nam, ctx, cap) ->
+          print_endline ("Check Hole: " ^ nam);
           (* Implement fill_typed_hole here *)
           typ
       | Let (nam, val_inner, bod) ->
+          print_endline ("Check Let: " ^ nam);
           let val_typ = infer ~dep fill load val_inner in
           ignore (check fill load (bod (Ann (false, val_inner, val_typ))) typ chk (dep + 1));
           typ
       | Def (nam, val_inner, bod) ->
+          print_endline ("Check Def: " ^ nam);
           ignore (check fill load (bod val_inner) typ chk (dep + 1));
           typ
       | _ ->
+          print_endline ("Checking other");
           let inf = infer ~dep fill load val_ in
           let inf = reduce load inf dep in
+          print_endline ("Check other: " ^ (show_term inf 0) ^ " expected: " ^ (show_term typ 0)); 
           (match (equal (Some fill) load typ inf dep) with
           | true -> typ
           | false ->
               let exp = show_term val_ dep in
               let det = show_term tty dep in
               let msg = "TypeMismatch\n- expected: " ^ exp ^ "\n- detected: " ^ det in
+              print_endline msg;
               raise (Type_Mismatch msg)
           ))
+  
 
   let rec replace (rep: term -> term option) (term: term): term =
     match rep term with
@@ -547,14 +607,21 @@ and parse_non_unicode_terms code =
   let loader book =
     fun name ->
       if not (Hashtbl.mem book name) then
-        let ic = In_channel.open_text name in
-        let code = In_channel.input_all ic in
-        match code with
-        | "" -> None
-        | _ ->
-          let _, nam, def = parse_def code in
-          Hashtbl.add book nam def;
-          Some def
+        try
+          let ic = open_in (name ^ ".tl") in
+          let code = really_input_string ic (in_channel_length ic) in
+          close_in ic;
+          let book_defs = parse_book code in
+          Hashtbl.iter (fun k v -> Hashtbl.add book k v) book_defs;
+          if Hashtbl.mem book name then 
+            Some (Hashtbl.find book name)
+          else
+            None
+        with
+        | Sys_error _ -> None
+        | _ -> None
       else
         Some (Hashtbl.find book name)
+  
+  
 end

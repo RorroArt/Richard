@@ -4,7 +4,7 @@ open Notty_unix
 open Lang
 open Printf
 
-(* let book : Lang.book = Hashtbl.create 10
+let book : Lang.book = Hashtbl.create 100
 
 let () =
   let args = Array.to_list Sys.argv in
@@ -28,10 +28,10 @@ let () =
       | _ ->
           eprintf "Usage: richard [check|normalize] <name>\n"
       end
-  | _ -> eprintf "Usage: richard [check|normalize] <name>\n" *)
+  | _ -> eprintf "Usage: richard [check|normalize] <name>\n"
 
 
-let book : Lang.book = Hashtbl.create 10
+(* let book : Lang.book = Hashtbl.create 10
 
 let load_book path =
   try
@@ -133,4 +133,4 @@ let () =
   let right_content = "Right Pane: Proof State and Goals" in
   let command_buffer = "" in
   try event_loop term left_content right_content command_buffer
-  with exn -> Term.release term; raise exn
+  with exn -> Term.release term; raise exn *)
